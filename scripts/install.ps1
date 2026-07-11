@@ -3,13 +3,16 @@
 
 $ErrorActionPreference = "Stop"
 
-$repo = "yv3000/siig"
+$repo = "yv3000/SIIG"
 $binaryName = "siig.exe"
 $installDir = "$env:USERPROFILE\.siig\bin"
 
 Write-Host "-> Detecting system..." -ForegroundColor Cyan
 
-$arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "386" }
+$arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+    "Arm64" { "arm64" }
+    default { "amd64" }
+}
 $assetName = "siig-windows-${arch}.exe"
 
 # Get latest release
