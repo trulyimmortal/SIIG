@@ -1,0 +1,59 @@
+name: Sync Rules from siig-rules
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'   # Every Monday at 2am UTC
+  workflow_dispatch:        # Manual trigger anytime from GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SIIG
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone siig-rules
+        run: |
+          git clone https://github.com/yv3000/siig-rules.git /tmp/siig-rules
+
+      - name: Copy rules into SIIG
+        run: |
+          cp /tmp/siig-rules/db/*.json rules/db/
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet rules/db/ && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Bump version and commit
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Get latest tag and bump patch version
+          LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          MAJOR=$(echo $LATEST | cut -d. -f1)
+          MINOR=$(echo $LATEST | cut -d. -f2)
+          PATCH=$(echo $LATEST | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          # Count how many new/changed files
+          CHANGED_COUNT=$(git diff --name-only rules/db/ | wc -l | tr -d ' ')
+
+          git add rules/db/
+          git commit -m "sync: update rules from siig-rules — ${CHANGED_COUNT} file(s) changed (${NEW_TAG})"
+          git tag $NEW_TAG
+          git push origin main
+          git push origin $NEW_TAG
+
+      - name: No changes
+        if: steps.changes.outputs.changed == 'false'
+        run: echo "siig-rules is already up to date. No new tag needed."
