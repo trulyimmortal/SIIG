@@ -4,7 +4,7 @@
 
 set -e
 
-REPO="yv3000/siig"
+REPO="yv3000/SIIG"
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="siig"
 
