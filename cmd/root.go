@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/yv3000/siig/cache"
 	"github.com/yv3000/siig/matcher"
 	"github.com/yv3000/siig/output"
 	"github.com/yv3000/siig/rules"
@@ -94,8 +95,15 @@ func runSiig(cmd *cobra.Command, args []string) {
 		allowedTargets = matcher.ParseTargets(targetList)
 	}
 
-	// 4. match detected stacks against rules
-	matchResult := matcher.Match(scanResult, allRules, allowedTargets)
+	// clear cache if --no-cache flag is set
+	if noCache {
+		if err := cache.Clear(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not clear cache: %v\n", err)
+		}
+	}
+
+	// 4. match detected stacks against rules (with online fetch if not offline)
+	matchResult := matcher.Match(scanResult, allRules, allowedTargets, offline)
 
 	// verbose output
 	if verbose {
