@@ -1,6 +1,14 @@
 package matcher
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/yv3000/siig/cache"
+	"github.com/yv3000/siig/fetcher"
 	"github.com/yv3000/siig/rules"
 	"github.com/yv3000/siig/scanner"
 )
@@ -39,7 +47,8 @@ type MatchResult struct {
 
 // Match takes scan results and all rules, produces a consolidated MatchResult.
 // Caveman logic: just loop through everything, merge it all together.
-func Match(scanResult *scanner.ScanResult, allRules []StackRule, allowedTargets []Target) *MatchResult {
+// If offline is false, also tries fetching unknown stacks from siig-rules.
+func Match(scanResult *scanner.ScanResult, allRules []StackRule, allowedTargets []Target, offline bool) *MatchResult {
 	result := &MatchResult{
 		Entries:           make(map[Target][]string),
 		VSCodeExclude:     make(map[string]bool),
@@ -73,6 +82,14 @@ func Match(scanResult *scanner.ScanResult, allRules []StackRule, allowedTargets 
 	for _, detected := range scanResult.DetectedStacks {
 		result.DetectedNames = append(result.DetectedNames, detected.Rule.Name)
 		mergeRuleEntries(result, &detected.Rule)
+	}
+
+	// online fetch: try to find rules for unknown stacks from siig-rules
+	if !offline {
+		candidates := buildCandidates(scanResult, allRules)
+		if len(candidates) > 0 {
+			fetchAndMerge(result, candidates)
+		}
 	}
 
 	// deduplicate entries per target
