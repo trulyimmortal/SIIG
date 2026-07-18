@@ -13,12 +13,14 @@ import (
 	"github.com/yv3000/siig/writer"
 )
 
-const appVersion = "1.0.0"
+const appVersion = "2.0.0"
 
 var (
 	dryRun  bool
 	targets string
 	verbose bool
+	offline bool
+	noCache bool
 )
 
 // rootCmd is the base command — just run "siig" and it does the thing
@@ -38,6 +40,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be added without writing")
 	rootCmd.Flags().StringVar(&targets, "targets", "", "Comma-separated targets to populate (git,vercel,docker,npm,vscode)")
 	rootCmd.Flags().BoolVar(&verbose, "verbose", false, "Print every file checked and rule applied")
+	rootCmd.Flags().BoolVar(&offline, "offline", false, "Skip all network requests, use embedded rules and cache only")
+	rootCmd.Flags().BoolVar(&noCache, "no-cache", false, "Force fresh fetch, ignore local cache")
 }
 
 // Execute runs the root command — called from main.go
