@@ -172,3 +172,168 @@ func ParseTargets(targets []string) []Target {
 	}
 	return result
 }
+
+
+// genericNames are file/dir names too common to be stack identifiers
+var genericNames = map[string]bool{
+	"makefile": true, "readme": true, "license": true, "dockerfile": true,
+	"index": true, "main": true, "app": true, "src": true, "package": true,
+	"config": true, "test": true, "build": true, "dist": true, "lib": true,
+	"bin": true, "docs": true, "doc": true, "tmp": true, "temp": true,
+	"vendor": true, "public": true, "static": true, "assets": true,
+	"changelog": true, "contributing": true, "gitignore": true,
+}
+
+// buildCandidates extracts probable stack IDs from scan results that didn't
+// match any embedded rule. Caveman: take filename without extension, lowercase it.
+func buildCandidates(scanResult *scanner.ScanResult, allRules []StackRule) []string {
+	// collect all detect files/dirs from embedded rules to know what's "matched"
+	matchedFiles := make(map[string]bool)
+	matchedDirs := make(map[string]bool)
+	for _, rule := range allRules {
+		if rule.Detect == nil {
+			continue
+		}
+		for _, f := range rule.Detect.Files {
+			matchedFiles[strings.ToLower(f)] = true
+		}
+		for _, d := range rule.Detect.Dirs {
+			matchedDirs[strings.ToLower(d)] = true
+		}
+	}
+
+	// also collect IDs of already-detected stacks to skip
+	detectedIDs := make(map[string]bool)
+	for _, s := range scanResult.DetectedStacks {
+		detectedIDs[s.Rule.ID] = true
+	}
+
+	// scan all files in the project root for candidate IDs
+	// we re-read just the top-level to get candidate names
+	candidates := make(map[string]bool)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		return nil
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		nameLower := strings.ToLower(name)
+
+		// skip hidden files/dirs
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		// extract candidate ID: name without extension, lowercased
+		candidate := strings.TrimSuffix(nameLower, filepath.Ext(nameLower))
+
+		// skip if it's a generic name
+		if genericNames[candidate] {
+			continue
+		}
+
+		// skip if the file is already matched by embedded rules
+		if matchedFiles[nameLower] {
+			continue
+		}
+		if entry.IsDir() && matchedDirs[nameLower] {
+			continue
+		}
+
+		// skip if this ID is already detected
+		if detectedIDs[candidate] {
+			continue
+		}
+
+		// skip very short candidates (1-2 chars are noise)
+		if len(candidate) < 3 {
+			continue
+		}
+
+		candidates[candidate] = true
+	}
+
+	// convert to slice
+	result := make([]string, 0, len(candidates))
+	for c := range candidates {
+		result = append(result, c)
+	}
+	return result
+}
+
+// fetchAndMerge fetches rules for candidate stack IDs concurrently and merges them
+// into the result. Max 5 concurrent fetches.
+func fetchAndMerge(result *MatchResult, candidates []string) {
+	const maxConcurrent = 5
+
+	type fetchResult struct {
+		rule *rules.StackRule
+		id   string
+	}
+
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		sem      = make(chan struct{}, maxConcurrent)
+		fetched  []fetchResult
+	)
+
+	for _, candidate := range candidates {
+		wg.Add(1)
+		sem <- struct{}{} // acquire semaphore slot
+
+		go func(stackID string) {
+			defer wg.Done()
+			defer func() { <-sem }() // release semaphore slot
+
+			// try cache first
+			rule, err := cache.Get(stackID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "cache error for %s: %v\n", stackID, err)
+			}
+
+			if rule != nil {
+				mu.Lock()
+				fetched = append(fetched, fetchResult{rule: rule, id: stackID})
+				mu.Unlock()
+				return
+			}
+
+			// cache miss — fetch from network
+			rule, err = fetcher.FetchStack(stackID)
+			if err != nil {
+				// network error — silently skip
+				return
+			}
+			if rule == nil {
+				// 404 — stack doesn't exist in siig-rules
+				return
+			}
+
+			// save to cache (best effort)
+			if cacheErr := cache.Set(stackID, rule); cacheErr != nil {
+				fmt.Fprintf(os.Stderr, "cache write error for %s: %v\n", stackID, cacheErr)
+			}
+
+			mu.Lock()
+			fetched = append(fetched, fetchResult{rule: rule, id: stackID})
+			mu.Unlock()
+		}(candidate)
+	}
+
+	wg.Wait()
+
+	// merge fetched rules into result
+	for _, fr := range fetched {
+		displayName := fr.rule.Name + " (online)"
+		result.DetectedNames = append(result.DetectedNames, displayName)
+		mergeRuleEntries(result, fr.rule)
+	}
+}
