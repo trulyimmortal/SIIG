@@ -40,13 +40,21 @@ Invoke-WebRequest -Uri $downloadUrl -OutFile $tempPath -UseBasicParsing
 # Verify checksum
 Write-Host "-> Verifying checksum..." -ForegroundColor Cyan
 try {
-    $checksums = Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing
-    # Normalize line endings (handle both \r\n and \n) and trim whitespace
-    $lines = ($checksums.Content -replace "`r`n", "`n" -replace "`r", "`n") -split "`n"
-    # Case-insensitive match on asset name
+    $checksumsResponse = Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing
+    # .Content is Byte[] on Windows PowerShell 5.1 (octet-stream) but String on PowerShell 7+
+    if ($checksumsResponse.Content -is [byte[]]) {
+        $checksumsText = [System.Text.Encoding]::UTF8.GetString($checksumsResponse.Content)
+    } else {
+        $checksumsText = [string]$checksumsResponse.Content
+    }
+    # Split on newlines (handle \r\n and \n)
+    $lines = $checksumsText -split "`r?`n"
+    # Find the line containing our asset name (case-insensitive)
     $expectedLine = $lines | Where-Object { $_ -imatch [regex]::Escape($assetName) }
     if ($expectedLine) {
-        $expected = ($expectedLine.Trim() -split "\s+")[0].ToLower()
+        # sha256sum format: "<hash>  <filename>" (two spaces)
+        $parts = $expectedLine.Trim() -split "\s+"
+        $expected = $parts[0].ToLower()
         $actual = (Get-FileHash -Path $tempPath -Algorithm SHA256).Hash.ToLower()
         if ($expected -ne $actual) {
             Write-Host "Error: Checksum mismatch!" -ForegroundColor Red
