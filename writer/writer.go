@@ -11,17 +11,17 @@ import (
 	"github.com/yv3000/siig/matcher"
 )
 
-const version = "1.0.0"
+const version = "2.0.0"
 const siigHeader = "# Added by SIIG v" + version
 
 // WriteResult holds what happened when writing to one target
 type WriteResult struct {
-	Target      matcher.Target
-	FilePath    string
+	Target       matcher.Target
+	FilePath     string
 	EntriesAdded int
-	Skipped     bool
-	SkipReason  string
-	Created     bool // file was created fresh
+	Skipped      bool
+	SkipReason   string
+	Created      bool // file was created fresh
 }
 
 // WriteAll writes entries to all applicable target files.
