@@ -41,9 +41,12 @@ Invoke-WebRequest -Uri $downloadUrl -OutFile $tempPath -UseBasicParsing
 Write-Host "-> Verifying checksum..." -ForegroundColor Cyan
 try {
     $checksums = Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing
-    $expectedLine = ($checksums.Content -split "`n") | Where-Object { $_ -match $assetName }
+    # Normalize line endings (handle both \r\n and \n) and trim whitespace
+    $lines = ($checksums.Content -replace "`r`n", "`n" -replace "`r", "`n") -split "`n"
+    # Case-insensitive match on asset name
+    $expectedLine = $lines | Where-Object { $_ -imatch [regex]::Escape($assetName) }
     if ($expectedLine) {
-        $expected = ($expectedLine -split "\s+")[0]
+        $expected = ($expectedLine.Trim() -split "\s+")[0].ToLower()
         $actual = (Get-FileHash -Path $tempPath -Algorithm SHA256).Hash.ToLower()
         if ($expected -ne $actual) {
             Write-Host "Error: Checksum mismatch!" -ForegroundColor Red
@@ -54,10 +57,10 @@ try {
         }
         Write-Host "-> Checksum verified" -ForegroundColor Green
     } else {
-        Write-Host "Warning: Could not find checksum for this asset" -ForegroundColor Yellow
+        Write-Host "Warning: Could not verify checksum for this asset" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "Warning: Could not verify checksum" -ForegroundColor Yellow
+    Write-Host "Warning: Could not verify checksum: $_" -ForegroundColor Yellow
 }
 
 # Move binary to install directory
