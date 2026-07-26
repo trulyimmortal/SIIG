@@ -5,7 +5,33 @@
 set -e
 
 REPO="yv3000/SIIG"
-INSTALL_DIR="/usr/local/bin"
+# determine install directory
+if [ -z "$INSTALL_DIR" ]; then
+  # try to find a writable directory in PATH
+  for dir in $(echo "$PATH" | tr ':' '\n'); do
+    if [ -d "$dir" ] && [ -w "$dir" ]; then
+      # prefer standard system-wide or user-local bin directories
+      case "$dir" in
+        */bin|*/.local/bin)
+          INSTALL_DIR="$dir"
+          break
+          ;;
+      esac
+    fi
+  done
+
+  # if no suitable writable directory found, fallback to standard locations
+  if [ -z "$INSTALL_DIR" ]; then
+    if [ -d "/usr/local/bin" ]; then
+      INSTALL_DIR="/usr/local/bin"
+    elif [ -d "/opt/homebrew/bin" ]; then
+      INSTALL_DIR="/opt/homebrew/bin"
+    else
+      INSTALL_DIR="$HOME/.local/bin"
+    fi
+  fi
+fi
+
 BINARY_NAME="siig"
 
 # detect OS and architecture
@@ -72,6 +98,16 @@ fi
 
 # install binary
 chmod +x "${TMP_DIR}/${BINARY_NAME}"
+
+# ensure install directory exists
+if [ ! -d "$INSTALL_DIR" ]; then
+  echo "→ Creating ${INSTALL_DIR}..."
+  if [ -w "$(dirname "$INSTALL_DIR")" ]; then
+    mkdir -p "$INSTALL_DIR"
+  else
+    sudo mkdir -p "$INSTALL_DIR"
+  fi
+fi
 
 if [ -w "$INSTALL_DIR" ]; then
   mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
