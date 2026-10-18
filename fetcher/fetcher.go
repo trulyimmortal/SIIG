@@ -12,15 +12,19 @@ import (
 )
 
 const (
-	baseURL    = "https://raw.githubusercontent.com/yv3000/siig-rules/main/db/"
-	timeout    = 5 * time.Second
-	userAgent  = "siig/2.0"
+	baseURL   = "https://raw.githubusercontent.com/yv3000/siig-rules/main/db/"
+	timeout   = 5 * time.Second
+	userAgent = "siig/2.0"
 )
 
 // FetchStack fetches a single stack JSON by ID from siig-rules.
 // Returns nil, nil if the stack doesn't exist (404).
 // Returns nil, err on network/parse errors.
 func FetchStack(stackID string) (*rules.StackRule, error) {
+	if err := rules.ValidateStackID(stackID); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
