@@ -153,10 +153,14 @@ func dedupe(items []string) []string {
 	return result
 }
 
-// ParseTargets converts user-provided target strings to Target values
-func ParseTargets(targets []string) []Target {
+// ParseTargets converts user-provided target strings to Target values.
+func ParseTargets(targets []string) ([]Target, error) {
 	var result []Target
-	for _, t := range targets {
+	for _, raw := range targets {
+		t := strings.TrimSpace(strings.ToLower(raw))
+		if t == "" {
+			continue
+		}
 		switch t {
 		case "git", "gitignore":
 			result = append(result, TargetGitignore)
@@ -168,11 +172,12 @@ func ParseTargets(targets []string) []Target {
 			result = append(result, TargetNpmignore)
 		case "vscode":
 			result = append(result, TargetVSCode)
+		default:
+			return nil, fmt.Errorf("unknown target %q (want git, vercel, docker, npm, vscode)", raw)
 		}
 	}
-	return result
+	return result, nil
 }
-
 
 // genericNames are file/dir names too common to be stack identifiers
 var genericNames = map[string]bool{
@@ -279,10 +284,10 @@ func fetchAndMerge(result *MatchResult, candidates []string) {
 	}
 
 	var (
-		mu       sync.Mutex
-		wg       sync.WaitGroup
-		sem      = make(chan struct{}, maxConcurrent)
-		fetched  []fetchResult
+		mu      sync.Mutex
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, maxConcurrent)
+		fetched []fetchResult
 	)
 
 	for _, candidate := range candidates {
