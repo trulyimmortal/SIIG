@@ -33,8 +33,9 @@ and automatically populates .gitignore, .vercelignore, .dockerignore,
 and .vscode/settings.json with the correct entries.
 
 Zero config. One command. No more leaked secrets.`,
-	Version: appVersion,
-	Run:     runSiig,
+	Version:      appVersion,
+	SilenceUsage: true,
+	RunE:         runSiig,
 }
 
 func init() {
@@ -58,26 +59,20 @@ func Execute() {
 // 3. Match rules
 // 4. Write files
 // 5. Print what happened
-func runSiig(cmd *cobra.Command, args []string) {
-	// get current directory
+func runSiig(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot determine current directory: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot determine current directory: %w", err)
 	}
 
-	// 1. load all rules from embedded DB
 	allRules, err := rules.LoadAll()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to load rules: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load rules: %w", err)
 	}
 
-	// 2. scan project directory
 	scanResult, err := scanner.Scan(cwd, allRules)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to scan project: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to scan project: %w", err)
 	}
 
 	// print detected stacks
@@ -88,11 +83,15 @@ func runSiig(cmd *cobra.Command, args []string) {
 		fmt.Println("Applying global rules only...")
 	}
 
-	// 3. parse target filters
 	var allowedTargets []matcher.Target
 	if targets != "" {
-		targetList := strings.Split(targets, ",")
-		allowedTargets = matcher.ParseTargets(targetList)
+		allowedTargets, err = matcher.ParseTargets(strings.Split(targets, ","))
+		if err != nil {
+			return err
+		}
+		if len(allowedTargets) == 0 {
+			return fmt.Errorf("no valid targets in %q", targets)
+		}
 	}
 
 	// clear cache if --no-cache flag is set
@@ -132,4 +131,5 @@ func runSiig(cmd *cobra.Command, args []string) {
 			output.PrintNoChanges()
 		}
 	}
+	return nil
 }
