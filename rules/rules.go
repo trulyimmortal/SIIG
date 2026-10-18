@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"strings"
+	"unicode"
 )
 
 //go:embed db/*.json
@@ -31,10 +33,10 @@ type StackRule struct {
 
 // StackRulesList holds all the ignore/config entries for a stack
 type StackRulesList struct {
-	Gitignore    []string       `json:"gitignore,omitempty"`
-	Vercelignore []string       `json:"vercelignore,omitempty"`
-	Dockerignore []string       `json:"dockerignore,omitempty"`
-	Npmignore    []string       `json:"npmignore,omitempty"`
+	Gitignore    []string        `json:"gitignore,omitempty"`
+	Vercelignore []string        `json:"vercelignore,omitempty"`
+	Dockerignore []string        `json:"dockerignore,omitempty"`
+	Npmignore    []string        `json:"npmignore,omitempty"`
 	VSCode       *VSCodeSettings `json:"vscode,omitempty"`
 }
 
@@ -62,6 +64,9 @@ func LoadAll() ([]StackRule, error) {
 		if err := json.Unmarshal(data, &rule); err != nil {
 			return nil, fmt.Errorf("failed to parse rule file %s: %w", entry.Name(), err)
 		}
+		if strings.TrimSpace(rule.ID) == "" {
+			return nil, fmt.Errorf("rule file %s: missing id", entry.Name())
+		}
 
 		rules = append(rules, rule)
 	}
@@ -88,4 +93,24 @@ func GetDetectable(rules []StackRule) []StackRule {
 		}
 	}
 	return detectable
+}
+
+// ValidateStackID rejects empty, path-like, or otherwise unsafe stack IDs.
+func ValidateStackID(stackID string) error {
+	if stackID == "" {
+		return fmt.Errorf("stack id is required")
+	}
+	if len(stackID) > 64 {
+		return fmt.Errorf("stack id too long")
+	}
+	if strings.ContainsAny(stackID, `/\`) || strings.Contains(stackID, "..") {
+		return fmt.Errorf("invalid stack id")
+	}
+	for _, r := range stackID {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+			continue
+		}
+		return fmt.Errorf("invalid stack id")
+	}
+	return nil
 }
