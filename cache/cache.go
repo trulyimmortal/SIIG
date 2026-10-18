@@ -87,6 +87,9 @@ func ensureCacheDir() error {
 // Get returns a cached StackRule if it exists and is not stale (< 7 days old).
 // Returns nil if not cached or stale.
 func Get(stackID string) (*rules.StackRule, error) {
+	if err := rules.ValidateStackID(stackID); err != nil {
+		return nil, err
+	}
 	meta := loadMetadata()
 
 	fetchTime, exists := meta.Fetched[stackID]
@@ -121,6 +124,12 @@ func Get(stackID string) (*rules.StackRule, error) {
 
 // Set saves a StackRule to cache and updates the metadata timestamp.
 func Set(stackID string, rule *rules.StackRule) error {
+	if err := rules.ValidateStackID(stackID); err != nil {
+		return err
+	}
+	if rule == nil {
+		return fmt.Errorf("rule is required")
+	}
 	if err := ensureCacheDir(); err != nil {
 		return fmt.Errorf("cannot create cache dir: %w", err)
 	}
